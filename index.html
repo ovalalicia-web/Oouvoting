@@ -1,0 +1,886 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OOU SUG ELECTION '26 | Secure Portal</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+        <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-app.js";
+        import { getFirestore, collection, addDoc, getDocs, doc, updateDoc, setDoc, deleteDoc, onSnapshot, query, where, getDoc, deleteField, writeBatch } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore.js";
+        import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.0/firebase-auth.js";
+
+        // --- FIREBASE CONFIGURATION ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyBc15NTH9Yc8ymh0dy0oZdoXqtGPC4E-Ak",
+            authDomain: "oou-election-26.firebaseapp.com",
+            projectId: "oou-election-26",
+            storageBucket: "oou-election-26.firebasestorage.app",
+            messagingSenderId: "363374021593",
+            appId: "1:363374021593:web:65f640fb38fabc1d65a7c8"
+        };
+
+        // Initialize Firebase (Only once!)
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        // Expose to Window for Alpine to access
+        window.db = db;
+        window.auth = auth;
+        // Added deleteDoc here so your delete button works too
+        window.firestore = { collection, addDoc, getDocs, doc, updateDoc, setDoc, deleteDoc, onSnapshot, query, where, getDoc, deleteField, writeBatch }; 
+        window.firebaseAuth = { signInWithEmailAndPassword, signOut, onAuthStateChanged };
+        
+        console.log("Firebase Initialized and exposed to window");
+    </script>
+
+    <style>
+        [x-cloak] { display: none !important; }
+        .oou-green { background-color: #004d2c; }
+        .oou-text { color: #004d2c; }
+        .loader {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #004d2c;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="bg-[#fcfdfd] font-sans text-slate-900 overflow-x-hidden" x-data="oouApp()" x-init="initApp()">
+
+    <div class="fixed top-5 right-5 z-[150] space-y-2">
+        <template x-for="notif in notifications" :key="notif.id">
+            <div x-show="notif.show" x-transition.duration.500ms 
+                 class="bg-slate-900 text-white px-6 py-4 rounded-xl shadow-2xl flex items-center gap-3 min-w-[300px]">
+                <i :class="notif.type === 'error' ? 'text-red-500 fa-circle-exclamation' : 'text-emerald-400 fa-check-circle'" class="fas text-xl"></i>
+                <div>
+                    <h4 class="font-bold text-sm" x-text="notif.title"></h4>
+                    <p class="text-xs text-slate-400" x-text="notif.msg"></p>
+                </div>
+            </div>
+        </template>
+    </div>
+
+    <nav class="bg-white border-b border-slate-200 px-4 md:px-8 py-4 flex justify-between items-center sticky top-0 z-50 shadow-sm">
+        <div class="flex items-center gap-3 md:gap-4 cursor-pointer" @click="view = 'home'">
+            <div class="h-12 w-12 rounded-full bg-slate-200 border-2 border-white drop-shadow-md overflow-hidden">
+                 <img src="school_logo.jpg" onerror="this.src='https://via.placeholder.com/50'" class="w-full h-full object-cover">
+            </div>
+            <div class="h-12 w-12 rounded-full bg-emerald-100 border-2 border-white drop-shadow-md overflow-hidden">
+                <img src="sug_logo.jpg" onerror="this.src='https://via.placeholder.com/50'" class="w-full h-full object-cover">
+            </div>
+            
+            <div class="text-left pl-2">
+                <h1 class="text-lg md:text-2xl font-black tracking-tighter uppercase leading-none text-slate-900">OOU SUG '26</h1>
+                <p class="text-[9px] md:text-[10px] text-emerald-700 font-bold tracking-widest uppercase hidden md:block">Official Portal</p>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-4">
+    <div x-data="{ menuOpen: false }" class="relative" x-cloak>
+        <button @click="menuOpen = !menuOpen" class="h-10 w-10 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-600 transition">
+            <i class="fas fa-ellipsis-v"></i>
+        </button>
+        
+        <div x-show="menuOpen" @click.outside="menuOpen = false" 
+             x-transition.origin.top.right
+             class="absolute right-0 top-12 w-48 bg-white rounded-xl shadow-2xl border border-slate-100 z-[100] overflow-hidden">
+            
+            <a href="#" @click.prevent="openAuth('admin'); menuOpen = false" class="block px-6 py-4 text-sm font-bold text-slate-600 hover:bg-slate-50 hover:text-emerald-600 transition">
+                <i class="fas fa-user-shield mr-2"></i> Admin Login
+            </a>
+            </div>
+    </div>
+
+    <template x-if="user.isLoggedIn">
+                <div class="flex items-center gap-4">
+                    <div class="hidden md:block text-right">
+                        <p class="text-[10px] font-bold text-slate-400 uppercase" x-text="user.role"></p>
+                        <p class="text-sm font-black text-slate-800" x-text="user.name"></p>
+                    </div>
+                    <button @click="logout" class="bg-slate-100 h-10 w-10 rounded-xl flex items-center justify-center text-red-500 hover:bg-red-50 transition">
+                        <i class="fas fa-power-off"></i>
+                    </button>
+                </div>
+            </template>
+        </div>
+    </nav>
+
+    <main class="max-w-6xl mx-auto p-6 md:p-12 relative">
+
+        <div x-show="view === 'home'" x-transition class="space-y-16">
+            <div class="text-center max-w-3xl mx-auto space-y-6 pt-10">
+                <span x-show="electionStatus === 'closed'" class="inline-block px-4 py-1 bg-red-100 text-red-600 rounded-full text-xs font-black tracking-widest uppercase">Election Closed</span>
+                <span x-show="electionStatus === 'open'" class="inline-block px-4 py-1 bg-emerald-100 text-emerald-600 rounded-full text-xs font-black tracking-widest uppercase animate-pulse">Polls Open</span>
+
+                <h2 class="text-5xl md:text-6xl font-black text-slate-900 tracking-tight leading-none uppercase">
+                    OOU SUG SHS <span class="oou-text">ELECTION '26</span>
+                </h2>
+                
+                <div x-show="timerDisplay" class="py-4">
+    <p class="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1" x-text="timerLabel"></p>
+    <div class="text-3xl md:text-4xl font-mono font-black text-emerald-600 tracking-widest" x-text="timerDisplay"></div>
+</div>
+
+                
+                <div class="flex flex-wrap justify-center gap-4 pt-4">
+                    <button @click="openAuth('voter')" 
+                            :disabled="electionStatus !== 'open'"
+                            :class="electionStatus !== 'open' ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'"
+                            class="px-8 py-4 oou-green text-white rounded-2xl font-black shadow-xl transition flex items-center gap-3">
+                        <span>VOTE NOW</span>
+                        <i class="fas fa-arrow-right"></i>
+                    </button>
+                    <button @click="view = 'results'" class="px-8 py-4 bg-white border-2 border-slate-200 rounded-2xl font-black hover:border-emerald-600 transition">LIVE RESULTS</button>
+                </div>
+            </div>
+        </div>
+
+        <div x-show="view === 'auth'" class="max-w-md mx-auto py-10" x-transition>
+            <div class="bg-white rounded-[3rem] shadow-2xl border border-slate-100 overflow-hidden relative">
+                <div class="oou-green p-10 text-white text-center">
+                    <h3 class="text-2xl font-black" x-text="authMode === 'admin' ? 'Access' : 'Voter Accreditation'"></h3>
+                </div>
+                
+                <div class="p-10 space-y-5">
+                    <template x-if="authMode === 'admin'">
+                        <div class="space-y-4">
+                            <div class="space-y-1">
+                                <label class="text-[10px] font-black text-slate-400 uppercase">Admin Email</label>
+                                <input type="email" x-model="authForm.email" class="w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-emerald-500">
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[10px] font-black text-slate-400 uppercase">Password</label>
+                                <input type="password" x-model="authForm.pass" class="w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-emerald-500">
+                            </div>
+                        </div>
+                    </template>
+
+                    <template x-if="authMode === 'voter'">
+                        <div class="space-y-4">
+                            <div class="space-y-1">
+                                <label class="text-[10px] font-black text-slate-400 uppercase">Matriculation Number</label>
+                                <input type="text" x-model="authForm.matric" placeholder="e.g. OOU/19/20/0000" class="w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-emerald-500 uppercase">
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[10px] font-black text-slate-400 uppercase">Full Name</label>
+                                <input type="text" x-model="authForm.name" placeholder="Surname Firstname" class="w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-emerald-500">
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[10px] font-black text-slate-400 uppercase">Department</label>
+                                <input type="text" x-model="authForm.dept" placeholder="e.g. Computer Science" class="w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-emerald-500">
+                            </div>
+                            <div class="space-y-1">
+                                <label class="text-[10px] font-black text-slate-400 uppercase">Level</label>
+                                <select x-model="authForm.level" class="w-full p-4 bg-slate-50 border rounded-2xl outline-none focus:ring-2 focus:ring-emerald-500">
+                                    <option value="">Select Level</option>
+                                    <option value="100">100 Level</option>
+                                    <option value="200">200 Level</option>
+                                    <option value="300">300 Level</option>
+                                    <option value="400">400 Level</option>
+                                    <option value="500">500 Level</option>
+                                </select>
+                            </div>
+                        </div>
+                    </template>
+
+                    <button @click="processLogin" :disabled="loading" class="w-full py-5 oou-green text-white rounded-2xl font-black shadow-xl flex justify-center items-center gap-3">
+                        <span x-show="!loading">AUTHENTICATE</span>
+                        <div x-show="loading" class="loader border-t-white border-white/20"></div>
+                    </button>
+                    <button @click="view = 'home'" class="w-full text-xs font-bold text-slate-400">CANCEL</button>
+                </div>
+            </div>
+        </div>
+
+        <div x-show="view === 'ballot'" class="max-w-4xl mx-auto space-y-10" x-transition>
+            <div class="bg-red-50 border border-red-200 p-4 rounded-2xl flex items-start gap-3">
+                <i class="fas fa-exclamation-triangle text-red-600 mt-1"></i>
+                <div>
+                    <h4 class="font-bold text-red-800 text-sm">IMPORTANT NOTICE</h4>
+                    <p class="text-xs text-red-600">You can only vote once. Once you click "Submit Vote", your choice is final and cannot be rectified or changed.</p>
+                </div>
+            </div>
+
+            <template x-for="pos in positions" :key="pos.id">
+                <div class="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 space-y-6">
+                    <h3 class="text-center text-sm font-black text-slate-400 uppercase tracking-[0.3em] border-b pb-4" x-text="pos.title"></h3>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <template x-for="cand in pos.candidates" :key="cand.id">
+                            <div @click="votes[pos.id] = cand.id" 
+                                 :class="votes[pos.id] === cand.id ? 'border-emerald-600 bg-emerald-50 ring-4 ring-emerald-100' : 'border-slate-100 hover:border-emerald-300'"
+                                 class="p-6 border-2 rounded-[2rem] cursor-pointer transition-all flex items-center gap-4 relative overflow-hidden">
+                                <img :src="cand.img || 'https://via.placeholder.com/150'" class="w-16 h-16 rounded-xl object-cover bg-slate-200">
+                                <div>
+                                    <h4 class="text-lg font-bold text-slate-800 leading-tight" x-text="cand.name"></h4>
+                                    <p class="text-xs text-slate-400 font-bold uppercase" x-text="cand.dept"></p>
+                                </div>
+                                <div x-show="votes[pos.id] === cand.id" class="absolute right-6 text-emerald-600 text-xl"><i class="fas fa-check-circle"></i></div>
+                            </div>
+                        </template>
+                    </div>
+                </div>
+            </template>
+            
+            <button @click="verifyVoteSubmission" class="w-full py-6 oou-green text-white rounded-[2rem] font-black text-xl shadow-2xl hover:scale-[1.01] transition">
+                SUBMIT FINAL VOTE
+            </button>
+        </div>
+
+        <div x-show="view === 'results'" class="max-w-4xl mx-auto py-10" x-transition>
+            <div class="flex justify-between items-center mb-8">
+                <h2 class="text-3xl font-black">Live Tally</h2>
+                <button @click="view = 'home'" class="text-slate-400 hover:text-slate-900"><i class="fas fa-times text-2xl"></i></button>
+            </div>
+            
+            <div class="space-y-8">
+                <template x-if="!resultsReleased">
+                    <div class="text-center py-20 space-y-4">
+                        <i class="fas fa-lock text-6xl text-slate-200"></i>
+                        <h3 class="text-2xl font-black text-slate-300 uppercase">Results Pending</h3>
+                        <p class="text-slate-400 text-sm">The electoral committee has not released the official results yet.</p>
+                    </div>
+                </template>
+
+                <template x-if="resultsReleased">
+                    <div class="space-y-8">
+                        <template x-for="pos in positions" :key="pos.id">
+                            <div class="bg-white p-8 rounded-[2rem] shadow-lg border border-slate-100">
+                                <h3 class="text-xs font-black text-slate-400 uppercase tracking-widest mb-6" x-text="pos.title"></h3>
+                                <div class="space-y-6">
+                                    <template x-for="cand in getSortedCandidates(pos)">
+                                        <div>
+                                            <div class="flex justify-between items-end mb-2">
+                                                <div class="flex items-center space-x-3">
+                                                    <img :src="cand.img || 'https://via.placeholder.com/150'" class="w-8 h-8 rounded-lg object-cover">
+                                                    <span class="font-bold text-slate-700 text-sm" x-text="cand.name"></span>
+                                                </div>
+                                                <div class="text-right">
+                                                    <span class="block text-lg font-black oou-text" x-text="cand.voteCount || 0"></span>
+                                                </div>
+                                            </div>
+                                            <div class="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                                                <div class="h-full oou-green transition-all duration-1000" :style="'width:' + getPercentage(cand.voteCount, pos.totalVotes) + '%'"></div>
+                                            </div>
+                                        </div>
+                                    </template>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+        <div x-show="view === 'admin'" class="space-y-8" x-transition>
+            
+            <div class="bg-slate-900 rounded-[2.5rem] p-8 text-white flex flex-col md:flex-row gap-4 justify-between items-center shadow-2xl">
+                <div>
+                    <h2 class="text-2xl font-black text-emerald-400">Command Center</h2>
+                    <p class="text-xs opacity-50 font-mono" x-text="'ADMIN ID: ' + user.email"></p>
+                </div>
+                <div class="flex gap-3">
+                    <button @click="toggleResults" 
+                        :class="resultsReleased ? 'bg-white text-slate-900' : 'bg-slate-700 text-slate-300'"
+                        class="px-4 py-3 rounded-xl font-bold text-xs transition border border-transparent hover:border-white">
+                        <span x-text="resultsReleased ? 'HIDE RESULTS' : 'RELEASE RESULTS'"></span>
+                    </button>
+
+                    <button @click="toggleElection" 
+                        :class="electionStatus === 'open' ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'"
+                        class="px-6 py-3 rounded-xl font-bold text-xs transition">
+                        <span x-text="electionStatus === 'open' ? 'STOP ELECTION' : 'START ELECTION'"></span>
+                    </button>
+                </div>
+            </div>
+            
+            <div class="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
+    <div class="flex justify-between items-center mb-4">
+        <h3 class="text-xl font-black text-slate-800">Automatic Timer</h3>
+        <button @click="clearTimer" class="text-red-400 text-xs font-bold hover:text-red-600">RESET TIMER</button>
+    </div>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="space-y-2">
+            <label class="text-[10px] font-bold text-slate-400 uppercase">Start Date & Time</label>
+            <input type="datetime-local" x-model="timerConfig.start" class="w-full p-4 bg-slate-50 border rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-emerald-500">
+        </div>
+        <div class="space-y-2">
+            <label class="text-[10px] font-bold text-slate-400 uppercase">End Date & Time</label>
+            <input type="datetime-local" x-model="timerConfig.end" class="w-full p-4 bg-slate-50 border rounded-2xl font-bold text-sm outline-none focus:ring-2 focus:ring-emerald-500">
+        </div>
+    </div>
+    <button @click="saveTimer" class="mt-6 w-full py-3 bg-slate-800 text-white rounded-xl font-bold text-xs hover:bg-slate-900 transition">
+        SAVE & SYNC TIMER
+    </button>
+</div>
+
+<div class="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm mt-6">
+    <h3 class="text-xl font-black mb-4 text-slate-800 border-b pb-2">Database Management</h3>
+    
+    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <button @click="downloadVoterList" class="flex items-center justify-center gap-2 py-4 bg-emerald-50 text-emerald-700 rounded-xl font-bold hover:bg-emerald-100 transition border border-emerald-200">
+            <i class="fas fa-file-csv text-xl"></i>
+            <span>Export Voter List (CSV)</span>
+        </button>
+
+        <button @click="resetElectionData" class="flex items-center justify-center gap-2 py-4 bg-red-50 text-red-700 rounded-xl font-bold hover:bg-red-100 transition border border-red-200">
+            <i class="fas fa-trash-alt text-xl"></i>
+            <span>RESET ELECTION & CLEAR VOTERS</span>
+        </button>
+    </div>
+    <p class="text-[10px] text-slate-400 mt-3">* <strong>Export:</strong> Downloads a list of all accredited voters.<br>* <strong>Reset:</strong> Deletes ALL votes and resets candidate scores to zero. Irreversible.</p>
+</div>
+
+            <div class="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm">
+                <h3 class="text-xl font-black mb-4 text-slate-800">Live Voter Feed <span class="text-xs font-normal bg-slate-100 px-2 py-1 rounded-lg ml-2" x-text="recentVotes.length + ' Total Votes'"></span></h3>
+                <div class="overflow-y-auto max-h-60 space-y-2 pr-2">
+                    <template x-for="vote in recentVotes" :key="vote.id">
+                        <div class="flex justify-between items-center p-3 bg-slate-50 rounded-xl border border-slate-100 text-xs hover:bg-emerald-50 transition">
+                            <div class="flex items-center gap-3">
+                                <div class="bg-emerald-100 text-emerald-600 h-8 w-8 rounded-full flex items-center justify-center font-bold">
+                                    <i class="fas fa-user"></i>
+                                </div>
+                                <div>
+                                    <p class="font-black text-slate-700 uppercase" x-text="vote.name"></p>
+                                    <p class="text-[10px] text-slate-400" x-text="vote.matric"></p>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <p class="font-bold text-emerald-600" x-text="vote.dept"></p>
+                                <p class="text-[10px] text-slate-400" x-text="vote.level + ' Lvl'"></p>
+                            </div>
+                        </div>
+                    </template>
+                    <div x-show="recentVotes.length === 0" class="text-center text-slate-400 py-4 text-xs italic">Waiting for first vote...</div>
+                </div>
+            </div>
+
+            <div class="space-y-6">
+                <div class="flex justify-between items-center px-2">
+                    <h3 class="text-xl font-black">Ballot Configuration</h3>
+                    <button type="button" @click="addNewPosition" class="text-emerald-600 font-bold text-sm">+ Add Position</button>
+                </div>
+
+                <template x-for="(pos, pIdx) in positions" :key="pos.id">
+                    <div class="bg-white p-6 rounded-[2rem] border border-slate-200 shadow-sm relative group">
+                        <button @click="deletePosition(pos.id)" class="absolute top-6 right-6 text-slate-300 hover:text-red-500"><i class="fas fa-trash"></i></button>
+
+                        <div class="mb-6">
+                            <label class="text-[9px] font-bold text-slate-400 uppercase">Position Title</label>
+                            <input type="text" x-model="pos.title" @change="updatePositionTitle(pos.id, pos.title)" class="w-full text-lg font-black border-b border-slate-200 focus:border-emerald-500 outline-none py-1">
+                        </div>
+
+                        <div class="space-y-3">
+                            <template x-for="(cand, cIdx) in pos.candidates" :key="cand.id">
+                                <div class="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                    <div class="relative w-12 h-12 shrink-0">
+                                        <img :src="cand.img || 'https://via.placeholder.com/150'" class="w-full h-full rounded-lg object-cover">
+                                        <label class="absolute inset-0 bg-black/50 opacity-0 hover:opacity-100 flex items-center justify-center text-white cursor-pointer rounded-lg transition text-[10px]">
+                                            <i class="fas fa-camera"></i>
+                                            <input type="file" class="hidden" @change="uploadImage($event, pos.id, cand.id)">
+                                        </label>
+                                    </div>
+                                    <div class="flex-1">
+                                        <input type="text" x-model="cand.name" placeholder="Name" class="bg-transparent font-bold text-sm w-full outline-none">
+                                        <input type="text" x-model="cand.dept" placeholder="Dept" class="bg-transparent text-xs text-slate-500 w-full outline-none mb-1">
+                                        
+                                        <div class="flex items-center gap-2 mt-1">
+                                            <label class="text-[8px] font-bold text-emerald-600 uppercase">VOTES:</label>
+                                            <input type="number" x-model.number="cand.voteCount" class="bg-emerald-50 text-emerald-800 text-xs font-black w-20 px-2 py-1 rounded border border-emerald-100 focus:border-emerald-500 outline-none">
+                                        </div>
+                                    </div>
+                                    <button @click="removeCandidate(pos.id, cand.id)" class="text-red-300 hover:text-red-500 text-xs"><i class="fas fa-times"></i></button>
+                                </div>
+                            </template>
+                            <button @click="addCandidateToPos(pos.id)" class="w-full py-3 border border-dashed border-slate-300 rounded-xl text-slate-400 text-xs font-bold hover:bg-slate-50 hover:border-emerald-400 hover:text-emerald-600 transition">+ Add Candidate</button>
+                            <button @click="savePositionChanges(pos)" class="w-full py-2 bg-slate-900 text-white text-xs rounded-lg font-bold">Save Changes</button>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+
+    </main>
+
+    <script>
+        function oouApp() {
+            return {
+                view: 'home',
+                loading: false,
+                authMode: 'voter', // 'voter' or 'admin'
+                // ADDED DEPT AND LEVEL TO AUTHFORM
+                authForm: { matric: '', name: '', dept: '', level: '', email: '', pass: '' },
+                user: { isLoggedIn: false, role: '', name: '', email: '', matric: '', dept: '', level: '' },
+                
+                // Data Logic
+                electionStatus: 'closed', // 'open' or 'closed'
+                resultsReleased: false,   // New: Controls visibility
+                recentVotes: [],          // New: For Admin Feed
+                positions: [],            // Will fetch from Firestore
+                votes: {},                // Local vote selection
+                notifications: [],        // For toast
+                
+                // Add these new properties to your data object
+               timerConfig: { start: '', end: '' },
+               timerDisplay: '',
+               timerLabel: '',
+                timerInterval: null,
+
+
+                // Methods
+                initApp() {
+    // 1. Wait for Firebase to load before running logic
+    if (!window.firestore || !window.db) {
+        setTimeout(() => this.initApp(), 200); // Try again in 200ms
+        return;
+    }
+
+    const { collection, onSnapshot, doc } = window.firestore;
+    const { db } = window;
+
+    console.log("Firebase Connected. Listening for updates...");
+
+    // 2. Listen to Election Config
+    // Listen to Election Config & Timer
+onSnapshot(doc(db, "config", "electionState"), (doc) => {
+    if(doc.exists()) {
+        const data = doc.data();
+        this.resultsReleased = data.resultsReleased || false;
+        
+        // Handle Timer Data
+        if (data.timerStart && data.timerEnd) {
+            this.timerConfig.start = data.timerStart;
+            this.timerConfig.end = data.timerEnd;
+            // Start the countdown loop
+            this.startCountdownLogic(data.timerStart, data.timerEnd);
+        } else {
+            // Fallback to manual status if no timer set
+            this.electionStatus = data.status;
+            this.timerDisplay = '';
+        }
+    }
+});
+
+    // 3. Listen to Positions
+    onSnapshot(collection(db, "positions"), (snapshot) => {
+        this.positions = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    });
+
+    // 4. Listen to Votes
+    onSnapshot(collection(db, "votes"), (snapshot) => {
+        let votesList = [];
+        snapshot.forEach(doc => {
+            votesList.push({ id: doc.id, ...doc.data() });
+        });
+        this.recentVotes = votesList.sort((a, b) => b.timestamp - a.timestamp);
+    });
+},
+
+                notify(title, msg, type = 'success') {
+                    const id = Date.now();
+                    this.notifications.push({ id, title, msg, type, show: true });
+                    setTimeout(() => { 
+                        this.notifications = this.notifications.filter(n => n.id !== id); 
+                    }, 4000);
+                },
+
+                openAuth(type) {
+                    this.authMode = type;
+                    // Reset Form
+                    this.authForm = { matric: '', name: '', dept: '', level: '', email: '', pass: '' };
+                    this.view = 'auth';
+                },
+
+                async processLogin() {
+                    this.loading = true;
+                    const { signInWithEmailAndPassword } = window.firebaseAuth;
+                    const { auth, db, firestore } = window;
+
+                    if (this.authMode === 'admin') {
+                        // Firebase Admin Auth
+                        try {
+                            const userCred = await signInWithEmailAndPassword(auth, this.authForm.email, this.authForm.pass);
+                            this.user = { isLoggedIn: true, role: 'ADMIN', name: 'Administrator', email: userCred.user.email };
+                            this.view = 'admin';
+                            this.notify("Welcome Admin", "Access Granted to Command Center");
+                        } catch (error) {
+                            this.notify("Access Denied", error.message, 'error');
+                        }
+                    } else {
+                        // Voter Logic (Simulated "Login" via Matric)
+                        // VALIDATE ALL FIELDS
+                            // 1. DEVICE SECURITY CHECK
+    if (localStorage.getItem('oou_election_voted') === 'true') {
+        const votedMatric = localStorage.getItem('oou_voter_matric') || 'Unknown';
+        this.notify("Device Restricted", `This device has already voted (Matric: ${votedMatric})`, 'error');
+        this.loading = false;
+        return;
+    }
+    
+                        if (this.authForm.matric.length < 5 || this.authForm.name.length < 3 || !this.authForm.dept || !this.authForm.level) {
+                            this.notify("Invalid Data", "Please fill all fields (Name, Matric, Dept, Level)", 'error');
+                            this.loading = false;
+                            return;
+                        }
+
+                        // Check if already voted
+                        const q = firestore.query(firestore.collection(db, "votes"), firestore.where("matric", "==", this.authForm.matric.trim().toUpperCase()));
+                        const querySnapshot = await firestore.getDocs(q);
+
+                        if (!querySnapshot.empty) {
+                            this.notify("Already Voted", "This matric number has already cast a ballot.", 'error');
+                            this.loading = false;
+                            return;
+                        }
+
+                        this.user = { 
+                            isLoggedIn: true, 
+                            role: 'STUDENT', 
+                            name: this.authForm.name, 
+                            matric: this.authForm.matric.trim().toUpperCase(),
+                            dept: this.authForm.dept,
+                            level: this.authForm.level
+                        };
+                        this.view = 'ballot';
+                        this.notify("Identity Verified", "Welcome, " + this.authForm.name);
+                    }
+                    this.loading = false;
+                },
+
+                async verifyVoteSubmission() {
+                    // Check if all positions are voted for
+                    if (Object.keys(this.votes).length < this.positions.length) {
+                        this.notify("Incomplete Ballot", "Please select a candidate for every position.", 'error');
+                        return;
+                    }
+                    
+                    if(confirm("Are you sure? You cannot undo this action.")) {
+                        this.submitFinalVote();
+                    }
+                },
+
+                async submitFinalVote() {
+                    this.loading = true;
+                    const { db, firestore } = window;
+                    
+                    try {
+                        // 1. Record the Voter (WITH DEPT & LEVEL)
+                        await firestore.addDoc(firestore.collection(db, "votes"), {
+                            matric: this.user.matric,
+                            name: this.user.name,
+                            dept: this.user.dept,
+                            level: this.user.level,
+                            timestamp: Date.now() // Use timestamp for sorting
+                        });
+
+                        // 2. Increment Counts (Client-side logic for demo)
+                        for(const posId in this.votes) {
+                            const candId = this.votes[posId];
+                            const posRef = firestore.doc(db, "positions", posId);
+                            const posDoc = await firestore.getDoc(posRef);
+                            
+                            if(posDoc.exists()) {
+                                let data = posDoc.data();
+                                let updatedCandidates = data.candidates.map(c => {
+                                    if(c.id == candId) {
+                                        return { ...c, voteCount: (c.voteCount || 0) + 1 };
+                                    }
+                                    return c;
+                                });
+                                await firestore.updateDoc(posRef, { candidates: updatedCandidates });
+                            }
+                        }
+
+                        this.view = 'home';
+                        this.logout();
+                         localStorage.setItem('oou_election_voted', 'true');
+                         localStorage.setItem('oou_voter_matric', this.user.matric);
+                        this.notify("Vote Cast Successfully", "Thank you for voting!");
+
+                    } catch(e) {
+                        console.error(e);
+                        this.notify("Error", "Could not submit vote. Try again.", 'error');
+                    }
+                    this.loading = false;
+                },
+
+                logout() {
+                    const { signOut } = window.firebaseAuth;
+                    const { auth } = window;
+                    signOut(auth);
+                    this.user = { isLoggedIn: false, role: '', name: '', email: '' };
+                    this.view = 'home';
+                    this.votes = {};
+                },
+
+                // --- Admin Functions ---
+
+                async toggleElection() {
+                    const newStatus = this.electionStatus === 'open' ? 'closed' : 'open';
+                    const { db, firestore } = window;
+                    // Merge option ensures we don't overwrite resultsReleased
+                    await firestore.setDoc(firestore.doc(db, "config", "electionState"), { status: newStatus }, { merge: true });
+                },
+
+                async toggleResults() {
+                    const { db, firestore } = window;
+                    await firestore.setDoc(firestore.doc(db, "config", "electionState"), { 
+                        resultsReleased: !this.resultsReleased 
+                    }, { merge: true });
+                },
+
+                async addNewPosition() {
+    try {
+        const { db, firestore } = window;
+        await firestore.addDoc(firestore.collection(db, "positions"), {
+            title: 'NEW POSITION',
+            candidates: []
+        });
+        this.notify("Success", "New position added");
+    } catch (e) {
+        console.error(e);
+        this.notify("Error", "Could not add position: " + e.message, 'error');
+    }
+},
+
+
+                async savePositionChanges(pos) {
+                    const { db, firestore } = window;
+                    await firestore.updateDoc(firestore.doc(db, "positions", pos.id), {
+                        title: pos.title,
+                        candidates: pos.candidates // This saves the edited voteCount too!
+                    });
+                    this.notify("Saved", "Position & Vote Counts updated successfully");
+                },
+
+                addCandidateToPos(posId) {
+                    const pos = this.positions.find(p => p.id === posId);
+                    pos.candidates.push({
+                        id: Date.now(),
+                        name: '',
+                        dept: '',
+                        voteCount: 0,
+                        img: ''
+                    });
+                },
+
+                removeCandidate(posId, candId) {
+                    const pos = this.positions.find(p => p.id === posId);
+                    pos.candidates = pos.candidates.filter(c => c.id !== candId);
+                },
+
+                async deletePosition(posId) {
+                    if(!confirm("Delete this position?")) return;
+                    const { db, firestore } = window;
+                    await firestore.deleteDoc(firestore.doc(db, "positions", posId));
+                },
+
+                uploadImage(event, posId, candId) {
+                    const file = event.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        const pos = this.positions.find(p => p.id === posId);
+                        const cand = pos.candidates.find(c => c.id === candId);
+                        cand.img = e.target.result;
+                    };
+                    reader.readAsDataURL(file);
+                },
+                
+                // --- NEW EXPORT & RESET FUNCTIONS ---
+
+async downloadVoterList() {
+    this.notify("Processing", "Generating voter list...");
+    const { db, firestore } = window;
+    
+    try {
+        // Fetch all votes
+        const q = firestore.query(firestore.collection(db, "votes"));
+        const snapshot = await firestore.getDocs(q);
+        
+        if (snapshot.empty) {
+            this.notify("Empty", "No voters found to export.", 'error');
+            return;
+        }
+
+        // CSV Header
+        let csvContent = "data:text/csv;charset=utf-8,";
+        csvContent += "Matric Number,Full Name,Department,Level,Timestamp\r\n";
+
+        // CSV Rows
+        snapshot.forEach(doc => {
+            const data = doc.data();
+            const date = new Date(data.timestamp).toLocaleString();
+            // Escape commas in names/dept to prevent CSV errors
+            const safeName = `"${data.name || ''}"`; 
+            const safeDept = `"${data.dept || ''}"`;
+            
+            csvContent += `${data.matric},${safeName},${safeDept},${data.level},${date}\r\n`;
+        });
+
+        // Trigger Download
+        const encodedUri = encodeURI(csvContent);
+        const link = document.createElement("a");
+        link.setAttribute("href", encodedUri);
+        link.setAttribute("download", "OOU_Election_Voters_List.csv");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        this.notify("Success", "Voter list downloaded successfully");
+        
+    } catch (e) {
+        console.error(e);
+        this.notify("Error", "Export failed: " + e.message, 'error');
+    }
+},
+
+async resetElectionData() {
+    const confirmation = prompt("DANGER ZONE!\n\nType 'DELETE ALL' to confirm.\n\nThis will:\n1. Delete ALL voter records.\n2. Reset ALL candidate scores to zero.\n3. This cannot be undone.");
+    
+    if (confirmation !== 'DELETE ALL') {
+        this.notify("Cancelled", "Reset action cancelled.");
+        return;
+    }
+
+    this.loading = true;
+    const { db, firestore } = window;
+    const batch = firestore.writeBatch(db);
+
+    try {
+        // 1. Delete all documents in 'votes' collection
+        const votesQ = firestore.query(firestore.collection(db, "votes"));
+        const votesSnapshot = await firestore.getDocs(votesQ);
+        
+        votesSnapshot.forEach((doc) => {
+            batch.delete(doc.ref);
+        });
+
+        // 2. Reset vote counts for candidates in 'positions'
+        this.positions.forEach(pos => {
+            const posRef = firestore.doc(db, "positions", pos.id);
+            // Reset local candidate counts first to update UI immediately
+            const resetCandidates = pos.candidates.map(c => ({...c, voteCount: 0}));
+            batch.update(posRef, { candidates: resetCandidates });
+        });
+
+        // 3. Commit the batch
+        await batch.commit();
+
+        // 4. Clear Local Admin Feed
+        this.recentVotes = [];
+        
+        // 5. Reset Election Status to Closed
+        await firestore.setDoc(firestore.doc(db, "config", "electionState"), { 
+            status: 'closed',
+            resultsReleased: false,
+            timerStart: firestore.deleteField(),
+            timerEnd: firestore.deleteField()
+        }, { merge: true });
+
+        this.notify("System Reset", "Election data cleared. Ready for new election.");
+
+    } catch (e) {
+        console.error(e);
+        this.notify("Error", "Reset failed: " + e.message, 'error');
+    }
+    this.loading = false;
+},
+                
+                // --- Add these functions to your methods ---
+
+async saveTimer() {
+    const { db, firestore } = window;
+    if (!this.timerConfig.start || !this.timerConfig.end) {
+        this.notify("Error", "Please select both Start and End times", "error");
+        return;
+    }
+    
+    await firestore.setDoc(firestore.doc(db, "config", "electionState"), { 
+        timerStart: this.timerConfig.start,
+        timerEnd: this.timerConfig.end
+    }, { merge: true });
+    
+    this.notify("Success", "Timer updated. Election will automate based on time.");
+},
+
+async clearTimer() {
+    if(!confirm("Disable automatic timer?")) return;
+    const { db, firestore } = window;
+    
+    // Remove timer fields, revert to manual 'closed'
+    await firestore.updateDoc(firestore.doc(db, "config", "electionState"), {
+        timerStart: firestore.deleteField(), // Note: You might need to import deleteField or just send null
+        timerEnd: firestore.deleteField(),
+        status: 'closed'
+    });
+    
+    this.timerConfig = { start: '', end: '' };
+    this.timerDisplay = '';
+    clearInterval(this.timerInterval);
+    this.notify("Timer Disabled", "Manual control restored.");
+},
+
+startCountdownLogic(startStr, endStr) {
+    if (this.timerInterval) clearInterval(this.timerInterval);
+
+    const updateTimer = () => {
+        const now = new Date().getTime();
+        const start = new Date(startStr).getTime();
+        const end = new Date(endStr).getTime();
+
+        if (now < start) {
+            // Election Upcoming
+            this.electionStatus = 'closed';
+            this.timerLabel = 'ELECTION STARTS IN:';
+            this.timerDisplay = this.formatTime(start - now);
+        } else if (now >= start && now < end) {
+            // Election Live
+            this.electionStatus = 'open';
+            this.timerLabel = 'POLLS CLOSE IN:';
+            this.timerDisplay = this.formatTime(end - now);
+        } else {
+            // Election Ended
+            this.electionStatus = 'closed';
+            this.timerLabel = 'ELECTION ENDED';
+            this.timerDisplay = '00d 00h 00m 00s';
+            clearInterval(this.timerInterval);
+        }
+    };
+
+    updateTimer(); // Run immediately
+    this.timerInterval = setInterval(updateTimer, 1000); // Run every second
+},
+
+formatTime(ms) {
+    const days = Math.floor(ms / (1000 * 60 * 60 * 24));
+    const hours = Math.floor((ms % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutes = Math.floor((ms % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((ms % (1000 * 60)) / 1000);
+    return `${days}d ${hours}h ${minutes}m ${seconds}s`;
+},
+
+                // --- Helper Functions ---
+                getSortedCandidates(pos) {
+                    if(!pos.candidates) return [];
+                    pos.totalVotes = pos.candidates.reduce((sum, c) => sum + (c.voteCount || 0), 0);
+                    return pos.candidates.sort((a, b) => (b.voteCount || 0) - (a.voteCount || 0));
+                },
+
+                getPercentage(votes, total) {
+                    if(!total || total === 0) return 0;
+                    return Math.round((votes / total) * 100);
+                }
+            }
+        }
+    </script>
+</body>
+</html>
